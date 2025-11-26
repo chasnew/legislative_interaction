@@ -317,6 +317,8 @@ year_coop_df.to_csv(os.path.join(legis_int_path, 'processed_data', 'yearly_coop.
 # vote x earmarking analysis
 
 # load earmark data
+earmark_cols = ['solo_num', 'other_num', 'solo_amount', 'other_amount']
+
 complete_earmark = pd.read_csv(os.path.join(legis_int_path, 'processed_data',
                                             'earmark_2008_2010.csv'))
 complete_earmark.info()
@@ -328,6 +330,8 @@ fm_row_tmp['shift_year'] = 2008
 fm_row_tmp['year'] = 2009
 fm_row_tmp['solo_num'] = 0
 fm_row_tmp['other_num'] = 0
+fm_row_tmp['solo_amount'] = 0
+fm_row_tmp['other_amount'] = 0
 complete_earmark = pd.concat([complete_earmark, fm_row_tmp.to_frame().T], ignore_index=True)
 
 def fiscal_year(date):
@@ -349,13 +353,13 @@ stable_legis = stable_legis[stable_legis['year'] >= 8] # 256 / 292
 stable_legis.drop(columns=['year'], inplace=True)
 
 # merge long-stay legislators with earmark data
-stable_legis = stable_legis.merge(complete_earmark[['bioguide_id', 'solo_num', 'other_num', 'shift_year']],
+stable_legis = stable_legis.merge(complete_earmark[['bioguide_id', 'shift_year'] + earmark_cols],
                                   how='left', left_on='l_id', right_on='bioguide_id').drop(columns=['bioguide_id'])
 
 stable_legis['cat_year'] = stable_legis['shift_year'].astype(str)
-# stable_legis[['l_id', 'solo_num', 'other_num', 'cat_year']].to_csv(os.path.join(legis_int_path, 'processed_data',
-#                                                                                 'house_yearmark_data2005_2012.csv'),
-#                                                                    index=False)
+# stable_legis[['l_id', 'cat_year'] + earmark_cols].to_csv(os.path.join(legis_int_path, 'processed_data',
+#                                                                       'house_yearmark_data2005_2012.csv'),
+#                                                          index=False)
 
 # plt.figure(figsize=(12,6))
 # ax = sns.histplot(data=stable_legis, x='solo_num', hue='cat_year', bins=50, alpha=0.5)
@@ -392,7 +396,9 @@ last_bill_vote_df.info()
 
 # earmark_num_array = stable_legis['solo_num'].to_numpy()
 stable_legis['total_num'] = stable_legis['solo_num'] + stable_legis['other_num']
-avg_earmark = stable_legis.groupby('l_id')[['solo_num', 'total_num']].sum().reset_index()
+stable_legis['total_amount'] = stable_legis['solo_amount'] + stable_legis['other_amount']
+avg_earmark = stable_legis.groupby('l_id')[['solo_num', 'total_num',
+                                            'solo_amount', 'total_amount']].sum().reset_index()
 avg_earmark['solo_pct'] = avg_earmark['solo_num'].rank(pct=True)
 avg_earmark['total_pct'] = avg_earmark['total_num'].rank(pct=True)
 avg_earmark['earmark_class'] = avg_earmark['total_pct'].map(classify_earmarkers)
@@ -430,10 +436,12 @@ avg_earmark['earmark_use'] = avg_earmark['total_pct'].map(median_earmarkers)
 earmark_bill_vote = last_bill_vote_df.merge(avg_earmark, how='inner', on='l_id')
 earmark_bill_vote = earmark_bill_vote[['vote_id', 'date', 'l_id', 'party', 'bill_id',
                                        'vote', 'year', 'solo_num', 'total_num',
-                                       'solo_pct', 'total_pct']]
+                                       'solo_amount', 'total_amount', 'solo_pct', 'total_pct']]
 
 # NOW measuring cooperation on whether they support bills sponsored by the other party
 # originally used major power vote data to anchor cooperation (merged with maj_pow_votes or major_clust)
+
+# get the party of legislator that sponsored the bill
 earmark_bill_vote = earmark_bill_vote.merge(unique_sponsor[['bill_id', 'party_code']],
                                             how='left', on='bill_id')
 earmark_bill_vote['party_code'] = earmark_bill_vote['party_code'].map(party_map)
@@ -469,29 +477,26 @@ xpartisan_vote['earmark_period'] = xpartisan_vote['year'].map(earmark_period)
 # minor_earmark_vote['coop'] = (minor_earmark_vote['vote'] == minor_earmark_vote['major_vote'])
 # minor_earmark_vote['earmark_period'] = minor_earmark_vote['year'].map(earmark_period)
 
-
+stable_legis.info()
 # scatter plot between earmark numbers and cooperation rate (at the year level)
 # This only focuses on the minor power cluster
-tmp = complete_earmark[['bioguide_id', 'shift_year', 'solo_num', 'other_num']]
-tmp.columns = ['l_id', 'year', 'solo_num', 'other_num']
+tmp = stable_legis[['l_id', 'shift_year'] + earmark_cols]
+tmp.columns = ['l_id', 'year'] + earmark_cols
 
-real_earmark_coop = last_bill_vote_df.merge(tmp, how='left', on=['l_id', 'year'])
+real_earmark_coop = last_bill_vote_df.merge(tmp, how='inner', on=['l_id', 'year'])
 # tmp = tmp.groupby('l_id')[['solo_num', 'other_num']].sum()
 # real_earmark_coop = last_bill_vote_df.merge(tmp, how='left', on=['l_id'])
 
-# pre-ban (2007 - 2009) >= 2007 & < 2010
-# post-ban (2011 - 2012) >= 2011 & < 2013
-real_earmark_coop = real_earmark_coop[(real_earmark_coop['year'] >= 2007)
-                                       & (real_earmark_coop['year'] < 2010)]
 real_earmark_coop = real_earmark_coop[['vote_id', 'bill_id', 'date', 'l_id',
-                                       'party', 'vote', 'year', 'solo_num', 'other_num']]
+                                       'party', 'vote', 'year'] + earmark_cols]
 
 # classifying earmark use
 real_earmark_coop['total_num'] = real_earmark_coop['solo_num'] + real_earmark_coop['other_num']
-real_earmark_coop['solo_pct'] = real_earmark_coop['solo_num'].rank(pct=True)
-real_earmark_coop['total_pct'] = real_earmark_coop['total_num'].rank(pct=True)
-real_earmark_coop['earmark_class'] = real_earmark_coop['total_pct'].map(classify_earmarkers)
-real_earmark_coop['earmark_use'] = real_earmark_coop['total_pct'].map(median_earmarkers)
+real_earmark_coop['total_amount'] = real_earmark_coop['solo_amount'] + real_earmark_coop['other_amount']
+# real_earmark_coop['solo_pct'] = real_earmark_coop['solo_num'].rank(pct=True)
+# real_earmark_coop['total_pct'] = real_earmark_coop['total_num'].rank(pct=True)
+# real_earmark_coop['earmark_class'] = real_earmark_coop['total_pct'].map(classify_earmarkers)
+# real_earmark_coop['earmark_use'] = real_earmark_coop['total_pct'].map(median_earmarkers)
 
 # get which party sponsor the bills
 real_earmark_coop = real_earmark_coop.merge(unique_sponsor[['bill_id', 'party_code']],
@@ -502,20 +507,17 @@ real_earmark_coop.rename(columns={'party_code': 'bill_party'}, inplace=True)
 # calculate cooperation rate
 real_earmark_coop = real_earmark_coop[(real_earmark_coop['party'] != real_earmark_coop['bill_party'])].reset_index(drop=True)
 real_earmark_coop['coop'] = (real_earmark_coop['vote'] == 'Yea')
-real_earmark_coop['earmark_period'] = real_earmark_coop['year'].map(earmark_period)
+# real_earmark_coop['earmark_period'] = real_earmark_coop['year'].map(earmark_period)
 year_earmark_coop = real_earmark_coop.groupby(['l_id', 'year']).agg({'solo_num': 'mean',
                                                                      'total_num': 'mean',
-                                                                     'earmark_class': 'first',
+                                                                     'solo_amount': 'mean',
+                                                                     'total_amount': 'mean',
                                                                      'coop': 'mean'}).reset_index()
 year_earmark_coop['year'] = year_earmark_coop['year'].astype(str)
 
 year_earmark_coop.to_csv(os.path.join(legis_int_path, 'processed_data',
                                       'indiv_yearmark_coop_preban.csv'),
                          index=False)
-
-# year_earmark_coop.to_csv(os.path.join(legis_int_path, 'processed_data',
-#                                       'indiv_yearmark_coop_postban.csv'),
-#                          index=False)
 
 plt.figure(figsize=(12,6))
 ax = sns.scatterplot(x='total_num', y='coop', hue='year',
@@ -541,6 +543,8 @@ xpartisan_prepost_coop = xpartisan_vote.groupby(['earmark_class', 'earmark_perio
 plt.figure(figsize=(12,6))
 sns.pointplot(x='earmark_period', y='coop', hue='earmark_class', data=xpartisan_prepost_coop)
 plt.show()
+
+
 
 
 
