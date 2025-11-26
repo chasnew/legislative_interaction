@@ -24,6 +24,8 @@ def name_split(representative):
         return [merged_lname, None]
 
 
+earmark_cols = ['solo_amount', 'solo_num', 'solo_other_amount', 'solo_other_num']
+
 # load congress members from target years
 congress_df = pd.read_csv(os.path.join(legis_int_path, 'processed_data', 'target_congress_nominate.csv'))
 congress_df.info()
@@ -105,7 +107,7 @@ earmark_reps_df['lastname'] = earmark_reps_df['lastname'].str.replace('*', '')
 
 
 earmark2008 = earmark_reps_df[['representative', 'state', 'party', 'lastname',
-                               'firstname', 'solo_num', 'solo_other_num']]
+                               'firstname'] + earmark_cols]
 
 # Marilyn Musgrave (CO)
 earmark2008.at[65, 'party'] = 'R'
@@ -130,18 +132,16 @@ earmark2008_firstreq = earmark2008[~pd.isna(earmark2008['firstname'])]
 earmark2008_laststate = earmark2008[(pd.isna(earmark2008['firstname']))]
 
 earmark2008_firstreq = earmark2008_firstreq[['lastname', 'firstname',
-                                             'state', 'solo_num',
-                                             'solo_other_num']].merge(hr10_11_df, how='left',
-                                                                      on=['lastname', 'firstname', 'state'])
+                                             'state'] + earmark_cols].merge(hr10_11_df, how='left',
+                                                                            on=['lastname', 'firstname', 'state'])
 
-earmark2008_laststate = earmark2008_laststate[['lastname', 'state',
-                                               'solo_num', 'solo_other_num']].merge(hr10_11_df, how='left',
-                                                                                    on=['lastname', 'state'])
+earmark2008_laststate = earmark2008_laststate[['lastname', 'state'] + earmark_cols].merge(hr10_11_df, how='left',
+                                                                                          on=['lastname', 'state'])
 
-earmark2008_firstreq = earmark2008_firstreq[['bioname', 'bioguide_id', 'solo_num',
-                                             'solo_other_num', 'state', 'party_code']]
-earmark2008_laststate = earmark2008_laststate[['bioname', 'bioguide_id', 'solo_num',
-                                               'solo_other_num', 'state', 'party_code']]
+earmark2008_firstreq = earmark2008_firstreq[['bioname', 'bioguide_id', 'state',
+                                             'party_code'] + earmark_cols]
+earmark2008_laststate = earmark2008_laststate[['bioname', 'bioguide_id', 'state',
+                                               'party_code'] + earmark_cols]
 
 earmark2008 = pd.concat([earmark2008_firstreq, earmark2008_laststate])
 earmark2008['year'] = 2008
@@ -187,17 +187,15 @@ earmark2009_statereq = earmark2009[~pd.isna(earmark2009['state'])]
 earmark2009_lastfirst = earmark2009[pd.isna(earmark2009['state']) & (~pd.isna(earmark2009['firstname']))]
 earmark2009_lastonly = earmark2009[pd.isna(earmark2009['state']) & (pd.isna(earmark2009['firstname']))]
 
-earmark2009_statereq = hr10_11_df.merge(earmark2009_statereq[['lastname', 'firstname', 'state',
-                                                              'solo_num', 'solo_other_num']],
+earmark2009_statereq = hr10_11_df.merge(earmark2009_statereq[['lastname', 'firstname', 'state'] + earmark_cols],
                                         how='inner', on=['lastname', 'firstname', 'state'])
 
-earmark2009_lastfirst = earmark2009_lastfirst[['lastname', 'firstname',
-                                               'solo_num', 'solo_other_num']].merge(hr10_11_df, how='left',
-                                                                                    on=['lastname', 'firstname'])
+earmark2009_lastfirst = earmark2009_lastfirst[['lastname',
+                                               'firstname'] + earmark_cols].merge(hr10_11_df, how='left',
+                                                                                  on=['lastname', 'firstname'])
 
-earmark2009_lastonly = earmark2009_lastonly[['lastname', 'solo_num',
-                                             'solo_other_num']].merge(hr10_11_df, how='left',
-                                                                      on='lastname')
+earmark2009_lastonly = earmark2009_lastonly[['lastname'] + earmark_cols].merge(hr10_11_df, how='left',
+                                                                               on='lastname')
 
 # Young Don = Young Donal Edwin
 # Scott Bobby = Robert Cortez Scott
@@ -210,12 +208,12 @@ earmark2009_lastonly = earmark2009_lastonly[['lastname', 'solo_num',
 # Graves Samuel (MO)
 # Carson André (2008) Preceded by Carson Julia May
 
-earmark2009_statereq = earmark2009_statereq[['bioname', 'bioguide_id', 'solo_num',
-                                             'solo_other_num', 'state', 'party_code']]
-earmark2009_lastfirst = earmark2009_lastfirst[['bioname', 'bioguide_id', 'solo_num',
-                                               'solo_other_num', 'state', 'party_code']]
-earmark2009_lastonly = earmark2009_lastonly[['bioname', 'bioguide_id', 'solo_num',
-                                             'solo_other_num', 'state', 'party_code']]
+earmark2009_statereq = earmark2009_statereq[['bioname', 'bioguide_id', 'state',
+                                             'party_code'] + earmark_cols]
+earmark2009_lastfirst = earmark2009_lastfirst[['bioname', 'bioguide_id', 'state',
+                                               'party_code'] + earmark_cols]
+earmark2009_lastonly = earmark2009_lastonly[['bioname', 'bioguide_id', 'state',
+                                             'party_code'] + earmark_cols]
 
 earmark2009 = pd.concat([earmark2009_statereq, earmark2009_lastfirst, earmark2009_lastonly])
 earmark2009['year'] = 2009
@@ -254,7 +252,7 @@ earmark_reps_df[['lastname', 'firstname']] = pd.DataFrame(repname_series.map(nam
 earmark_reps_df['lastname'] = earmark_reps_df['lastname'].str.replace('*', '')
 
 earmark2010 = earmark_reps_df[['representative', 'state', 'party', 'lastname',
-                               'firstname', 'solo_num', 'solo_other_num']]
+                               'firstname'] + earmark_cols]
 
 # manually edit firstnames to match the other dataset
 earmark2010.at[31, 'firstname'] = 'edward'
@@ -273,13 +271,11 @@ earmark2010_firstreq = earmark2010[~pd.isna(earmark2010['firstname'])]
 earmark2010_laststate = earmark2010[(pd.isna(earmark2010['firstname']))]
 
 earmark2010_firstreq = earmark2010_firstreq[['lastname', 'firstname',
-                                             'state', 'solo_num',
-                                             'solo_other_num']].merge(hr10_11_df, how='left',
-                                                                      on=['lastname', 'firstname', 'state'])
+                                             'state'] + earmark_cols].merge(hr10_11_df, how='left',
+                                                                            on=['lastname', 'firstname', 'state'])
 
-earmark2010_laststate = earmark2010_laststate[['lastname', 'state', 'solo_num',
-                                               'solo_other_num']].merge(hr10_11_df, how='left',
-                                                                        on=['lastname', 'state'])
+earmark2010_laststate = earmark2010_laststate[['lastname', 'state'] + earmark_cols].merge(hr10_11_df, how='left',
+                                                                                          on=['lastname', 'state'])
 
 # Young Don = Young Donal Edwin
 # Scott Bobby = Robert Cortez Scott
@@ -298,10 +294,10 @@ earmark2010_laststate = earmark2010_laststate[['lastname', 'state', 'solo_num',
 # Ryan Paul (*Wl -> WI)
 # Luhan = luján
 
-earmark2010_firstreq = earmark2010_firstreq[['bioname', 'bioguide_id', 'solo_num',
-                                             'solo_other_num', 'state', 'party_code']]
-earmark2010_laststate = earmark2010_laststate[['bioname', 'bioguide_id', 'solo_num',
-                                               'solo_other_num', 'state', 'party_code']]
+earmark2010_firstreq = earmark2010_firstreq[['bioname', 'bioguide_id', 'state',
+                                             'party_code'] + earmark_cols]
+earmark2010_laststate = earmark2010_laststate[['bioname', 'bioguide_id', 'state',
+                                               'party_code'] + earmark_cols]
 
 earmark2010 = pd.concat([earmark2010_firstreq, earmark2010_laststate])
 earmark2010['year'] = 2010
@@ -311,9 +307,10 @@ earmark2010['year'] = 2010
 
 # combine earmark data from 2008-2010 and save the data
 complete_earmark = pd.concat([earmark2008, earmark2009, earmark2010])
-complete_earmark['other_num'] =  complete_earmark['solo_other_num'] - complete_earmark['solo_num']
+complete_earmark['other_num'] = complete_earmark['solo_other_num'] - complete_earmark['solo_num']
+complete_earmark['other_amount'] = complete_earmark['solo_other_amount'] - complete_earmark['solo_amount']
 complete_earmark = complete_earmark[['bioname', 'bioguide_id', 'state', 'party_code',
-                                     'year', 'solo_num', 'other_num']]
+                                     'year', 'solo_num', 'other_num', 'solo_amount', 'other_amount']]
 
 complete_earmark.to_csv(os.path.join(legis_int_path, 'processed_data', 'earmark_2008_2010.csv'),
                         index=False)
