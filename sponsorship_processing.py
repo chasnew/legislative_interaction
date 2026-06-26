@@ -1,5 +1,3 @@
-# from pyDataverse.api import NativeApi
-# from pyDataverse.api import DataAccessApi
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
@@ -193,6 +191,11 @@ carson_inds = car_jul_bills.index.to_list() + car_andr_bills.index.to_list()
 
 hr_sponsor_df = hr_sponsor_df.drop(index=carson_inds)
 
+# hr_sponsor_df[(hr_sponsor_df['bill_id'] == 'hr1419-110') &
+#               (hr_sponsor_df['name'] == 'Bachus, Spencer')][['thomas_id', 'withdrawn_at', 'state', 'district']]
+drop_rows = [15802, 15848, 15884] # rows with duplicates (thomas_id and bill_id)
+hr_sponsor_df.drop(index=drop_rows, inplace=True)
+
 hr_sponsor_df = hr_sponsor_df.merge(hr09_12_main,
                                     how='left', left_on=['congress', 'state', 'lastname', 'district'],
                                     right_on=['congress', 'state', 'lastname', 'district_code'])
@@ -308,11 +311,8 @@ bill_cols = hr_sponsor_df.columns
 
 # PAYNE, Donald Milford (died March 6th 2012) vs PAYNE, Donald, Jr.
 # extract rows for Payne Donald M. and Payne Donald Jr. because they overlap on years
-paynem_bills = hr_sponsor_df.loc[(hr_sponsor_df['name'].str.contains("Payne")) &
-                                 (hr_sponsor_df['intro_date'] < '2012-03-31')]
-
-paynejr_bills = hr_sponsor_df.loc[(hr_sponsor_df['name'].str.contains("Payne")) &
-                                  (hr_sponsor_df['intro_date'] > '2012-03-31')]
+paynem_bills = hr_sponsor_df.loc[(hr_sponsor_df['thomas_id'] == 902)]
+paynejr_bills = hr_sponsor_df.loc[(hr_sponsor_df['thomas_id'] == 2097)]
 
 # hr09_12_df[(hr09_12_df['lastname'].str.contains("payne"))][['congress', 'bioname',
 #                                                              'bioguide_id', 'party_code', 'district_code']]
@@ -322,13 +322,14 @@ paynem_bills['party_code'] = 100
 paynem_bills['district_code'] = 10
 paynem_bills['bioguide_id'] = 'P000149'
 
+
 # add data to PAYNE, Donald, Jr. rows
 paynejr_bills['party_code'] = 100
 paynejr_bills['district_code'] = 10
 paynejr_bills['bioguide_id'] = 'P000604'
 
 payne_inds = paynem_bills.index.to_list() + paynejr_bills.index.to_list()
-hr_sponsor_df = hr_sponsor_df.drop(index=payne_inds)
+hr_sponsor_df = hr_sponsor_df.drop(index=payne_inds) # drop the Payne(s) to concat them later
 
 hr_sponsor_df = hr_sponsor_df.merge(hr09_12_main,
                                     how='left', left_on=['congress', 'state', 'lastname', 'district'],
@@ -355,6 +356,8 @@ needed_cols = ['bioguide_id', 'congress', 'intro_date', 'bill_id', 'bill_type',
                'subject', 'name', 'party_code', 'sponsor', 'cosponsor']
 # hr_sponsor_df.drop_duplicates(subset=['bill_id'])
 hr112_cosponsor_df = hr_sponsor_df[needed_cols]
+
+hr112_cosponsor_df[hr112_cosponsor_df['bioguide_id'] == 'P000149']
 hr112_cosponsor_df.to_csv(os.path.join(legis_int_path, 'processed_data', 'hr112_cosponsor.csv'),
                           index=False)
 
