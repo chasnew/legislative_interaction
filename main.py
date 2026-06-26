@@ -56,22 +56,39 @@ def name_split(representative):
     else:
         return [merged_lname, None]
 
-# rep_maps = {'Diaz-Balart, L.': 'Diaz-Balart, Lincoln',
-#             'Diaz-Balart, M.': 'Diaz-Balart, Mario',
-#             'Murphy, Tim': 'Murphy, Timothy',
-#             'Sánchez, Linda T.': 'Sanchez, Linda'}
 
 congress_list = [109, 110, 111, 112]
 major_party = {109: 'R', 110: 'D', 111: 'D', 112: 'R'}
 
 party_map = {200: 'R', 100: 'D', 328: 'I'}
 
+########################### loading bill and cosponsorship data ##################################
 # hr111_sponsor_df = pd.read_csv(os.path.join(legis_int_path, 'processed_data', 'hr111_cosponsor.csv'))
 complete_cosponsor = pd.read_csv(os.path.join(legis_int_path, 'processed_data', 'hr109_112_cosponsor.csv'))
+complete_cosponsor.info()
+
+bill_sbj_df = complete_cosponsor.loc[complete_cosponsor['sponsor'], ['bill_id', 'subject']]
+bill_sbj_df['subject'].value_counts() # unevenly spread (some subjects may be grouped together?)
+bill_sbj_df['subject'].nunique() # 36
+pd.isna(bill_sbj_df['subject']).sum() # 269 Na rows out of 27061
 
 spon_reduced_cols = ['congress', 'bill_id', 'bioguide_id', 'name', 'party_code']
 unique_sponsor = complete_cosponsor.loc[complete_cosponsor['sponsor'], spon_reduced_cols]
 
+# aggregate the number of parties (co)sponsoring each bill
+sporsor_party_count = complete_cosponsor.groupby('bill_id').agg({'party_code': pd.Series.nunique}).reset_index()
+sporsor_party_count.columns = ['bill_id', 'bill_party_count']
+
+trimmed_cosponsor = complete_cosponsor[['intro_date', 'bioguide_id', 'congress', 'bill_id',
+                                        'party_code', 'sponsor', 'cosponsor']]
+trimmed_cosponsor.rename(columns={'bioguide_id': 'l_id'}, inplace=True)
+
+########################### House representative election data ##################################
+house_election = pd.read_csv(os.path.join(legis_int_path, 'processed_data', 'house_election2004_2010.csv'))
+trimmed_hr_election = house_election[['congress', 'bioguide_id' , 'general']]
+trimmed_hr_election = trimmed_hr_election.rename(columns = {'bioguide_id': 'l_id'})
+
+########################### Main data processing pipeline ####################################
 congress_df_list = []
 for i in range(len(congress_list)):
     congress_id = congress_list[i]
@@ -125,18 +142,6 @@ passage_bills = bill_hr_vote_df[bill_pass_mask]
 
 # bill_hr_vote_df[bill_hr_vote_df['vote_id'] == 'h294-113.2013']['category']
 
-# bill_vote_count = passage_bills.groupby(['congress', 'bill_number'])['bill_number'].count()
-# dup_masks = bill_vote_count > 435
-# dup_bills = bill_vote_count.index[dup_masks]
-# list(dup_bills)
-#
-# multi_dup_masks = bill_vote_count > 869
-# multi_dup_bills = bill_vote_count.index[multi_dup_masks]
-# list(multi_dup_bills)
-#
-# passage_bills[(passage_bills['congress'] == 109) &
-#               (passage_bills['bill_number'] == 3010)].groupby(['vote_id', 'vote'])['vote'].count()
-
 # keep only last vote session of a bill
 unique_vote_ids = passage_bills.sort_values('datetime').drop_duplicates(['congress', 'bill_number'],
                                                                         keep='last')[['vote_id']]
@@ -146,26 +151,18 @@ last_bill_vote_df['bill_id'] = 'hr' + last_bill_vote_df['bill_number'].astype(in
                                '-' + last_bill_vote_df['congress'].astype(str)
 
 
-# voted_bills = last_bill_vote_df.drop_duplicates(subset=['congress', 'bill_number'])[['congress', 'bill_number']]
-# voted_bills['bill_id'] = 'hr' + voted_bills['bill_number'].astype(int).astype(str) +\
-#                          '-' + voted_bills['congress'].astype(str)
-#
-# tmp = voted_bills.merge(unique_sponsor[['bill_id', 'party_code']], how='left', on='bill_id')
-# tmp['party_code'].value_counts() # 308 Demcrat bills + 67 Republican bills
-# tmp.groupby(['congress', 'party_code'])[['bill_id']].count()
-
 # check unique legislators that hold seats pre- and post- earmark ban
-short_bvote_df = last_bill_vote_df[last_bill_vote_df['year'] > 2008]
+# short_bvote_df = last_bill_vote_df[last_bill_vote_df['year'] > 2008]
 
 # 2005/2007 - 2012
-unique_legis = last_bill_vote_df.groupby(['year', 'l_id'])[['name']].first().reset_index()
-year_count = unique_legis.groupby('l_id')[['year']].count()
-(year_count == 6).sum() # 292
-(year_count == 8).sum() # 256
+# unique_legis = last_bill_vote_df.groupby(['year', 'l_id'])[['name']].first().reset_index()
+# year_count = unique_legis.groupby('l_id')[['year']].count()
+# (year_count == 6).sum() # 292
+# (year_count == 8).sum() # 256
 
 # 2009 - 2012
-unique_short_ls = short_bvote_df.groupby(['year', 'l_id'])[['name']].first().reset_index()
-(unique_short_ls.groupby('l_id')[['year']].count() == 4).sum() # 331
+# unique_short_ls = short_bvote_df.groupby(['year', 'l_id'])[['name']].first().reset_index()
+# (unique_short_ls.groupby('l_id')[['year']].count() == 4).sum() # 331
 
 
 
@@ -179,9 +176,9 @@ vote_sum = agg_bill_vote.groupby(['vote_id', 'party'])['vcount'].transform('sum'
 agg_bill_vote['prop'] = agg_bill_vote['vcount'] / vote_sum
 agg_bill_vote = agg_bill_vote.reset_index()
 
-last_bill_vote_df
-last_bill_vote_df[(last_bill_vote_df['date'] < '2005-09-01')]
-agg_bill_vote[(agg_bill_vote['date'] > '2005-07-31') & (agg_bill_vote['date'] < '2005-09-01')]
+# last_bill_vote_df
+# last_bill_vote_df[(last_bill_vote_df['date'] < '2005-09-01')]
+# agg_bill_vote[(agg_bill_vote['date'] > '2005-07-31') & (agg_bill_vote['date'] < '2005-09-01')]
 
 # identify majority vote response of each party
 max_ids = agg_bill_vote.groupby(['vote_id', 'party'])['vcount'].idxmax()
@@ -199,6 +196,24 @@ major_votes.columns = ['congress', 'bill_id', 'date', 'vote_id', 'party',
 # actually not needed now
 # major_votes.to_csv(os.path.join(legis_int_path, 'processed_data', 'party_major_vote.csv'),
 #                    index=False)
+
+
+# Check bills sponsored by minority party that got voted on
+# tmp = agg_bill_vote[(agg_bill_vote['date'] > '2006-12-31') &
+#                     (agg_bill_vote['date'] < '2011-01-01')]
+# tmp = tmp.merge(unique_sponsor[['bill_id', 'party_code']], how='left', on='bill_id')
+# tmp['party_code'] = tmp['party_code'].map(party_map)
+# minority_bills = tmp[tmp['party_code'] == 'R']['bill_id'].unique()
+# minority_bill_df = unique_sponsor[unique_sponsor['bill_id'].isin(minority_bills)]
+#
+# cosponsor_count = complete_cosponsor.groupby('bill_id')[['sponsor']].count().reset_index()
+# cosponsor_count = cosponsor_count.rename(columns={'sponsor': 'cosponsor_count'})
+# minority_bill_df = minority_bill_df.merge(cosponsor_count, how='left', on='bill_id')
+#
+# minority_bill_df['name'].unique()
+# minority_bill_df[minority_bill_df['bill_id'] == 'hr3446-110']
+# minority_bill_df['sponsor'].hist(bins=50)
+# plt.show()
 
 
 # check whether the majority votes of Dem and Rep agree with each other
@@ -314,7 +329,9 @@ year_coop_df.to_csv(os.path.join(legis_int_path, 'processed_data', 'yearly_coop.
 
 
 
-# vote x earmarking analysis
+
+
+################## vote x earmarking analysis ##########################
 
 # load earmark data
 earmark_cols = ['solo_num', 'other_num', 'solo_amount', 'other_amount']
@@ -347,8 +364,8 @@ def fiscal_year(date):
 # plt.show()
 
 # keep legislators that exists for 6 / 8 years (ideally 2005 / 2007 - 2012)
-unique_legis = last_bill_vote_df.groupby(['year', 'l_id'])[['name']].first().reset_index()
-stable_legis = unique_legis.groupby('l_id')[['year']].count().reset_index()
+unique_legis = last_bill_vote_df.groupby(['year', 'l_id'])[['name', 'party']].first().reset_index()
+stable_legis = unique_legis.groupby('l_id').agg({'year': 'count', 'party': 'first'}).reset_index()
 stable_legis = stable_legis[stable_legis['year'] >= 8] # 256 / 292
 stable_legis.drop(columns=['year'], inplace=True)
 
@@ -357,15 +374,10 @@ stable_legis = stable_legis.merge(complete_earmark[['bioguide_id', 'shift_year']
                                   how='left', left_on='l_id', right_on='bioguide_id').drop(columns=['bioguide_id'])
 
 stable_legis['cat_year'] = stable_legis['shift_year'].astype(str)
-# stable_legis[['l_id', 'cat_year'] + earmark_cols].to_csv(os.path.join(legis_int_path, 'processed_data',
-#                                                                       'house_yearmark_data2005_2012.csv'),
-#                                                          index=False)
+# stable_legis[['l_id', 'party', 'cat_year'] + earmark_cols].to_csv(os.path.join(legis_int_path, 'processed_data',
+#                                                                                'house_yearmark_data2005_2012.csv'),
+#                                                                   index=False)
 
-# plt.figure(figsize=(12,6))
-# ax = sns.histplot(data=stable_legis, x='solo_num', hue='cat_year', bins=50, alpha=0.5)
-# ax.set(xlabel='Number of solo earmarks')
-# plt.show()
-# plt.savefig('img/earmark_dist_2007_2009.png')
 
 # tmp = stable_legis.groupby('l_id')[['solo_num']].count()
 # short_l = list(tmp[tmp['solo_num'] < 3].index)
@@ -397,12 +409,15 @@ last_bill_vote_df.info()
 # earmark_num_array = stable_legis['solo_num'].to_numpy()
 stable_legis['total_num'] = stable_legis['solo_num'] + stable_legis['other_num']
 stable_legis['total_amount'] = stable_legis['solo_amount'] + stable_legis['other_amount']
-avg_earmark = stable_legis.groupby('l_id')[['solo_num', 'total_num',
-                                            'solo_amount', 'total_amount']].sum().reset_index()
+avg_earmark = stable_legis.groupby('l_id').agg({'party': 'first', 'solo_num': 'sum', 'total_num': 'sum',
+                                                'solo_amount': 'sum', 'total_amount': 'sum'}).reset_index()
 avg_earmark['solo_pct'] = avg_earmark['solo_num'].rank(pct=True)
 avg_earmark['total_pct'] = avg_earmark['total_num'].rank(pct=True)
+avg_earmark['party_total_pct'] = avg_earmark.groupby('party')['total_num'].rank(pct=True)
+
 avg_earmark['earmark_class'] = avg_earmark['total_pct'].map(classify_earmarkers)
-avg_earmark['earmark_use'] = avg_earmark['total_pct'].map(median_earmarkers)
+avg_earmark['party_earmark_class'] = avg_earmark['party_total_pct'].map(classify_earmarkers)
+# avg_earmark['earmark_use'] = avg_earmark['total_pct'].map(median_earmarkers)
 
 # sns.scatterplot(x='solo_num', y='earmark_pct', data=stable_legis)
 # plt.show()
@@ -433,10 +448,11 @@ avg_earmark['earmark_use'] = avg_earmark['total_pct'].map(median_earmarkers)
 # complete_le_df = complete_le_df.merge(avg_earmark, how='left', on='l_id')
 
 # merge earmark data with vote data
-earmark_bill_vote = last_bill_vote_df.merge(avg_earmark, how='inner', on='l_id')
+earmark_bill_vote = last_bill_vote_df.merge(avg_earmark.drop(columns=['party']), how='inner', on='l_id')
 earmark_bill_vote = earmark_bill_vote[['vote_id', 'date', 'l_id', 'party', 'bill_id',
-                                       'vote', 'year', 'solo_num', 'total_num',
-                                       'solo_amount', 'total_amount', 'solo_pct', 'total_pct']]
+                                       'vote', 'congress', 'year', 'solo_num', 'total_num',
+                                       'solo_amount', 'total_amount', 'solo_pct', 'total_pct',
+                                       'party_total_pct']]
 
 # NOW measuring cooperation on whether they support bills sponsored by the other party
 # originally used major power vote data to anchor cooperation (merged with maj_pow_votes or major_clust)
@@ -446,7 +462,10 @@ earmark_bill_vote = earmark_bill_vote.merge(unique_sponsor[['bill_id', 'party_co
                                             how='left', on='bill_id')
 earmark_bill_vote['party_code'] = earmark_bill_vote['party_code'].map(party_map)
 earmark_bill_vote.rename(columns={'party_code': 'bill_party'}, inplace=True)
+earmark_bill_vote = pd.merge(earmark_bill_vote, sporsor_party_count, on='bill_id')
+earmark_bill_vote = pd.merge(earmark_bill_vote, bill_sbj_df, on='bill_id')
 
+earmark_bill_vote = pd.merge(earmark_bill_vote, trimmed_hr_election, on=['congress', 'l_id'])
 # earmark_bill_vote = earmark_bill_vote.merge(maj_pow_votes[['vote_id', 'major_party', 'major_vote']],
 #                                             how='left', on='vote_id')
 
@@ -472,14 +491,8 @@ earmark_bill_vote.info()
 xpartisan_vote['coop'] = (xpartisan_vote['vote'] == 'Yea')
 xpartisan_vote['earmark_period'] = xpartisan_vote['year'].map(earmark_period)
 
-# Focus specifically on the minority
-# minor_earmark_vote = earmark_bill_vote[(earmark_bill_vote['party'] != earmark_bill_vote['major_party'])].reset_index(drop=True)
-# minor_earmark_vote['coop'] = (minor_earmark_vote['vote'] == minor_earmark_vote['major_vote'])
-# minor_earmark_vote['earmark_period'] = minor_earmark_vote['year'].map(earmark_period)
 
-stable_legis.info()
 # scatter plot between earmark numbers and cooperation rate (at the year level)
-# This only focuses on the minor power cluster
 tmp = stable_legis[['l_id', 'shift_year'] + earmark_cols]
 tmp.columns = ['l_id', 'year'] + earmark_cols
 
@@ -508,7 +521,8 @@ real_earmark_coop.rename(columns={'party_code': 'bill_party'}, inplace=True)
 real_earmark_coop = real_earmark_coop[(real_earmark_coop['party'] != real_earmark_coop['bill_party'])].reset_index(drop=True)
 real_earmark_coop['coop'] = (real_earmark_coop['vote'] == 'Yea')
 # real_earmark_coop['earmark_period'] = real_earmark_coop['year'].map(earmark_period)
-year_earmark_coop = real_earmark_coop.groupby(['l_id', 'year']).agg({'solo_num': 'mean',
+year_earmark_coop = real_earmark_coop.groupby(['l_id', 'year']).agg({'party': 'first',
+                                                                     'solo_num': 'mean',
                                                                      'total_num': 'mean',
                                                                      'solo_amount': 'mean',
                                                                      'total_amount': 'mean',
@@ -548,27 +562,104 @@ plt.show()
 
 
 
+#################### Assumptions check #########################
+
+# competitiveness
+year_to_congress = {2007: 110, 2008: 110, 2009: 111}
+
+complete_earmark['congress'] = complete_earmark['shift_year'].map(year_to_congress)
+
+earmark_compete_df = complete_earmark.merge(house_election[['bioguide_id', 'congress', 'general']],
+                                            how='left', on=['bioguide_id', 'congress'])
+
+earmark_compete_df.to_csv(os.path.join(legis_int_path, 'processed_data', 'complete_competitive_earmark.csv'),
+                          index=False)
+
+
+
+
 # check associations between how long legislators have been in congress (stability) and their behavior
 congress_age = pd.DataFrame({'bioguide_id': complete_earmark['bioguide_id'].unique()})
 
 congress_df = pd.read_csv(os.path.join(legis_int_path, 'HSall_members.csv'))
-congress_df = congress_df[congress_df['congress'] < 112]
+congress_df = congress_df[congress_df['congress'] < 113]
 congress_age = congress_age.merge(congress_df, how='left', on='bioguide_id')
 
 # average nominate score 2007-2009
-tmp = congress_age[congress_age['congress'] >= 110]
-tmp = tmp.groupby('bioguide_id')[['nominate_dim1', 'nominate_dim2']].mean().reset_index()
+tmp = congress_age[congress_age['congress'] >= 109]
+tmp = tmp.groupby('bioguide_id').agg({'party_code': 'last', 'nominate_dim1': 'mean',
+                                      'nominate_dim2': 'mean'}).reset_index()
 
-congress_age = congress_age.groupby('bioguide_id')[['congress']].count().reset_index() # derive congress age
+congress_age = congress_age.groupby('bioguide_id')[['congress']].min().reset_index() # derive congress age
 congress_age = congress_age.merge(tmp, how='left', on='bioguide_id')
-congress_age = congress_age.merge(complete_earmark, how='left', on='bioguide_id')
+congress_age['party'] = congress_age['party_code'].map(party_map)
+congress_age.drop(columns=['party_code'], inplace=True)
+congress_age.columns = ['bioguide_id', 'first_congress',
+                        'nominate_dim1', 'nominate_dim2', 'party']
 
-# keep last earmark numbers and party code of each legislator
-congress_age = congress_age.groupby('bioguide_id').agg({'congress': 'mean', 'party_code': 'last',
-                                                        'nominate_dim1': 'mean', 'nominate_dim2': 'mean',
-                                                        'solo_num': 'last'}).reset_index()
-congress_age.columns = ['bioguide_id', 'position_age', 'party_code',
-                        'nominate_dim1', 'nominate_dim2', 'solo_num']
+# combining with earmark data (to test if there's a difference between analyzed samples and out-of-sample subjects)
+agg_earmark = complete_earmark.groupby('bioguide_id')[['solo_num', 'other_num']].sum().reset_index()
+agg_earmark['total_num'] = agg_earmark['solo_num'] + agg_earmark['other_num']
+congress_age = congress_age.merge(agg_earmark[['bioguide_id', 'total_num']], how='left', on='bioguide_id')
+
 congress_age.to_csv(os.path.join(legis_int_path, 'processed_data',
                                                  'congress_age_behav_data.csv'),
                     index=False)
+
+
+
+
+# in-sample vs out-of-sample subjects
+complete_earmark['total_num'] = complete_earmark['solo_num'] + complete_earmark['other_num']
+complete_earmark['total_amount'] = complete_earmark['solo_amount'] + complete_earmark['other_amount']
+
+trimmed_complete_earmark = complete_earmark[['bioguide_id', 'shift_year', 'total_num', 'total_amount']]
+trimmed_complete_earmark.rename(columns={'bioguide_id': 'l_id', 'shift_year': 'year'}, inplace=True)
+
+# merge vote data with earmark data
+complete_data = last_bill_vote_df.merge(trimmed_complete_earmark, how='left', on=['l_id', 'year'])
+complete_data = complete_data[['vote_id', 'date', 'l_id', 'party', 'bill_id',
+                               'vote', 'congress', 'year', 'total_num', 'total_amount']]
+
+# get party that sponsored the bills
+complete_data = complete_data.merge(unique_sponsor[['bill_id', 'party_code']],
+                                    how='left', on='bill_id')
+complete_data['party_code'] = complete_data['party_code'].map(party_map)
+complete_data.rename(columns={'party_code': 'bill_party'}, inplace=True)
+
+# merge with election result data (competitiveness)
+trimmed_election = house_election[['bioguide_id', 'congress', 'general']]
+trimmed_election.rename(columns={'bioguide_id': 'l_id'}, inplace=True)
+complete_data = complete_data.merge(trimmed_election, how='left', on=['l_id', 'congress'])
+
+# merge with congress age data
+complete_age = congress_df[congress_df['congress'] < 113]
+complete_age = complete_age.groupby('bioguide_id').agg({'congress': ['min', 'max']}).reset_index() # derive congress age
+complete_age.columns = ['l_id', 'first_congress', 'latest_congress']
+complete_age = complete_age[complete_age['latest_congress'] >= 109]
+
+complete_data = complete_data.merge(complete_age, how='left', on='l_id')
+
+complete_data.to_csv(os.path.join(legis_int_path, 'processed_data',
+                                  'complete_processed_vote_data.csv'),
+                     index=False)
+
+
+# cross-partisan cosponsorship over time
+from itertools import product
+
+unique_bills = trimmed_cosponsor['bill_id'].unique()
+unique_legis_tmp = avg_earmark['l_id'].unique()
+
+trimmed_cosponsor.info()
+
+complete_legis_bill = pd.DataFrame(list(product(unique_legis_tmp, unique_bills)), columns=['l_id', 'bill_id'])
+complete_legis_bill = pd.merge(complete_legis_bill, trimmed_cosponsor[['l_id', 'bill_id', 'sponsor', 'cosponsor']],
+                               on=['l_id', 'bill_id'], how='left')
+complete_legis_bill.fillna(False, inplace=True)
+complete_cosponsor.info()
+
+# Next steps: filter out sponsor
+# merge df with other attributes: ['party', 'intro_date', 'congress']
+# then concat df with sponsor dataframe that has the same attributes
+
